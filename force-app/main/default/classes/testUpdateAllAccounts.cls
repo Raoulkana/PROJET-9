@@ -1,28 +1,54 @@
+/**
+ * Tests du batch UpdateAllAccounts.
+ *
+ * Vérifie le recalcul en masse du chiffre d'affaires des comptes à partir
+ * des commandes déjà activées, notamment dans un contexte de migration
+ * ou de reprise de données existantes.
+ */
 @isTest
 private class testUpdateAllAccounts {
 
-    @isTest static void test() {
-        Account acc1 = new Account(Name = 'Test Account 1');
-        insert acc1;
+    /**
+     * Vérifie que le batch recalcule correctement le chiffre d'affaires
+     * d'un compte à partir de l'ensemble de ses commandes "Activated".
+     */
+    @isTest
+    static void testBatchRecalculatesChiffreAffaires() {
+        Account acc = TestDataFactory.createAccount('Migration Test');
+        PricebookEntry pbe = TestDataFactory.createStandardPricebookEntry(200);
 
-        Product2 pd1 = new Product2(Name = 'Chemise Verte longue XYX', Family = 'Chemise');
-        Insert pd1;
- 
-        //Create the PricebookEntry
-        PricebookEntry pbe = new PricebookEntry(
-            Pricebook2Id = Test.getStandardPricebookId(),
-            Product2Id = pd1.Id,
-            UnitPrice = 1020,
-            IsActive = true
+        // Simulation d'une migration : les commandes existent déjà
+        // au statut "Activated" avant l'exécution du batch.
+        TestDataFactory.createOrdersWithItems(
+            acc.Id,
+            pbe.Id,
+            5,
+            200,
+            2,
+            true
         );
-        Insert pbe;
 
-        Order o1 = new Order(AccountId = acc1.Id);
-        insert o1;
+        Test.startTest();
 
-        OrderItem oi1 = new OrderItem (OrderId = o1.Id, PricebookEntryId = pbe.Id, Quantity=10, UnitPrice = 150);
-        insert oi1;
-        OrderItem oi2 = new OrderItem (OrderId = o1.Id, PricebookEntryId = pbe.Id, Quantity=20, UnitPrice = 1000);
-        insert oi2;        
+        // Exécution du batch avec une taille de lot de 200 enregistrements.
+        Database.executeBatch(new UpdateAllAccounts(), 200);
+
+        Test.stopTest();
+
+        Account refreshed = [
+            SELECT Chiffre_d_affaire__c
+            FROM Account
+            WHERE Id = :acc.Id
+        ];
+
+        // 5 commandes x 2 unités x 200 € = 2 000 € de chiffre d'affaires.
+        System.assertEquals(
+            2000,
+            refreshed.Chiffre_d_affaire__c,
+            'Le batch doit recalculer le CA à partir de toutes les commandes Activated du compte.'
+        );
     }
+
+    // Vérification CI/CD : validation de l'exécution complète des tests
+    // et du bon fonctionnement du pipeline après modification du batch.
 }
