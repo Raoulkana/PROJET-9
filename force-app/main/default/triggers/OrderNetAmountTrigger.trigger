@@ -1,21 +1,41 @@
 /**
- * Trigger : calcule le montant net (Order.NetAmount__c) de chaque commande,
- * avant sa mise à jour. NetAmount__c = TotalAmount - ShipmentCost__c.
+ * Trigger : calcule automatiquement le montant net (Order.NetAmount__c)
+ * de chaque commande avant sa mise à jour.
  *
- * Remplace l'ancien "CalculMontant.trigger". Bug corrigé : l'ancienne
- * version ne traitait que la première commande du contexte
- * (Order newOrder = trigger.new[0];), ce qui fait que seule la première
- * ligne était recalculée lors d'une mise à jour groupée (ex : import
- * multi-lignes avec Data Loader) — exactement le bug remonté par Fasha.
+ * Formule :
+ * NetAmount__c = TotalAmount - ShipmentCost__c
  *
- * Le trigger boucle maintenant sur l'ensemble de Trigger.new, quel que soit
- * le nombre de commandes traitées dans la transaction.
+ * Bug corrigé :
+ * L'ancienne version ne traitait que la première commande du contexte
+ * avec "Order newOrder = Trigger.new[0];".
+ *
+ * Lors d'une mise à jour groupée, par exemple avec Data Loader, plusieurs
+ * commandes peuvent être présentes dans Trigger.new. Seule la première
+ * était donc recalculée.
+ *
+ * Le trigger parcourt désormais l'ensemble de Trigger.new afin de recalculer
+ * le montant net de chaque commande, quel que soit le nombre de commandes
+ * traitées dans la transaction.
+ *
+ * Les valeurs nulles de TotalAmount et ShipmentCost__c sont remplacées
+ * par 0 afin d'éviter un résultat null lors du calcul.
  */
 trigger OrderNetAmountTrigger on Order (before update) {
 
+    // Parcourt toutes les commandes de la transaction.
     for (Order currentOrder : Trigger.new) {
-        Decimal totalAmount = currentOrder.TotalAmount == null ? 0 : currentOrder.TotalAmount;
-        Decimal shipmentCost = currentOrder.ShipmentCost__c == null ? 0 : currentOrder.ShipmentCost__c;
+
+        // Récupère le montant total de la commande.
+        Decimal totalAmount = currentOrder.TotalAmount == null
+            ? 0
+            : currentOrder.TotalAmount;
+
+        // Récupère les frais de livraison.
+        Decimal shipmentCost = currentOrder.ShipmentCost__c == null
+            ? 0
+            : currentOrder.ShipmentCost__c;
+
+        // Calcule et renseigne le montant net.
         currentOrder.NetAmount__c = totalAmount - shipmentCost;
     }
 }
